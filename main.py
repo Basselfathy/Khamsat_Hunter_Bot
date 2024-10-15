@@ -214,7 +214,7 @@ if __name__ == "__main__":
     
     # Phase 1: Scrape job links
     #Load_more_times refers to the number of pages you want to load (0 = one page) -- 25 job posts per page.
-    khamsat_scraper = KhamsatScraper(BASE_URL, load_more_times=2, delay=3) 
+    khamsat_scraper = KhamsatScraper(BASE_URL, load_more_times=1, delay=3) 
     job_links, cookies = asyncio.run(khamsat_scraper.run_scraper())
     save_job_links_to_json(job_links, OUTPUT_JSON)
     fetched_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
