@@ -57,7 +57,7 @@ class KhamsatScraper:
         """Click the 'Load More' button multiple times to load additional posts."""
         for i in range(self.load_more_times):
             try:
-                logger.info(f"Clicking 'Load More' button, attempt {i+1}")
+                logger.info(f"Loading {i+1} more page/s")
                 # Load more button XPath
                 LOAD_MORE_BUTTON_XPATH = '//*[@id="community_loadmore_btn"]'
                 await self.page.waitForXPath(LOAD_MORE_BUTTON_XPATH, {'visible': True})
