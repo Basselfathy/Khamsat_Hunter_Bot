@@ -1,23 +1,24 @@
 import json
 import random
 import asyncio
-import logging
+from _logger import logger
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
-from rich.logging import RichHandler
-logging.basicConfig(level=logging.INFO, format="%(message)s", datefmt="[%X]" , handlers=[RichHandler(markup=True)])
-logger = logging.getLogger("rich")
 
 # Load JSON data from a file
-def load_json_file(file_path):
+def load_json_file(file_path: str):
+    """Load JSON data from a given file path."""
     try:
-        with open(file_path, 'r', encoding="utf-8") as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
-            logger.info(f"File {file_path} loaded [green]successfuly![green]")
+        logger.info(f"File {file_path} loaded [green]successfuly![green]")
         return data
-    except Exception as e:
-        logger.error(f"Error loading file {file_path}: {e}")
-        return None
+    except FileNotFoundError:
+        logger.error(f"File not found: {file_path}")
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON: {e}")
+        raise
 
 # Save data to a JSON file
 def save_to_json(data, file_name):
@@ -58,7 +59,7 @@ def fetch_jobs(data, keywords_list:list):
                     "found_keywords": found_keywords
                 })
                 matched_jobs_counter += 1
-    logger.info(f"FOUND {matched_jobs_counter} product/s have the searched keyword/s!")            
+    logger.info(f"FOUND {matched_jobs_counter} jobs/s have the searched keyword/s!")            
     return jobs_list
 
 # Send message to Telegram
