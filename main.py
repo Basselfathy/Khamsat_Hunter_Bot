@@ -160,7 +160,7 @@ def parse_page(content: str):
 async def scrape_khamsat_job(url: str, COOKIES):
     """Fetch and parse a single job page."""
     async with semaphore:
-        logger.info(f"Fetching data from {url}")
+        #logger.info(f"Fetching data from {url}")
         await asyncio.sleep(random.uniform(0.7, 1.5))  # Add random delay
         redirected_url, content = await fetch_page_content(url, COOKIES)
         if content:
@@ -228,6 +228,7 @@ if __name__ == "__main__":
     fetched_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
     logger.info(f'Fetched cookies:\n{json.dumps(fetched_cookies, indent=2)}')
     # Phase 2: Scrape job details
+    logger.info(f'Fetching data from job links...')
     asyncio.run(scrape_khamsat_jobs(fetched_cookies))
 
     # Load keywords from the file
