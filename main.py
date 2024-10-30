@@ -2,27 +2,20 @@ import asyncio
 import os
 from pyppeteer import launch
 from lxml import html
-import logging
-from rich.logging import RichHandler
+from _logger import logger
 import json
 import random
 import httpx
 from search_and_send import search_and_send
-from config import BROWSER_PATH, API_HASH, API_ID, PHONE_NUMBER, RECEIVER_USER_ID, KEYWORDS_LIST
+from config import BROWSER_PATH, API_HASH, API_ID, PHONE_NUMBER, RECEIVER_USER_ID
 
-# Set up logging with the rich package
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[RichHandler()]
-)
-logger = logging.getLogger("khamsat_scraper")
 
 # Files path
-OUTPUT_JSON = os.path.join(os.getcwd(), 'khamsat_job_links.json')
-JOB_DATA_JSON = os.path.join(os.getcwd(), 'khamsat_jobs_data.json')
-OUTPUT_FILE = os.path.join(os.getcwd(), 'searched.json')
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_JSON = os.path.join(SCRIPT_DIR, 'khamsat_job_links.json')
+JOB_DATA_JSON = os.path.join(SCRIPT_DIR, 'khamsat_jobs_data.json')
+OUTPUT_FILE = os.path.join(SCRIPT_DIR, 'searched.json')
+KW_FILE = os.path.join(SCRIPT_DIR, 'keywords_list.txt')
 
 # Semaphore limit for async requests
 SEM_LIMIT = 5
@@ -179,7 +172,7 @@ async def scrape_khamsat_job(url: str, COOKIES):
 async def scrape_khamsat_jobs(COOKIES):
     """Scrape job data from multiple pages and save it as JSON."""
     tasks = []
-    jobs_url = load_json(OUTPUT_JSON)
+    jobs_url = load_json_file(OUTPUT_JSON)
     for url in jobs_url:
         tasks.append(scrape_khamsat_job(url, COOKIES))
     
@@ -194,7 +187,7 @@ async def scrape_khamsat_jobs(COOKIES):
     
     logger.info(f"Scraped {len(valid_results)} jobs and saved to {JOB_DATA_JSON}")
 
-def load_json(file_path: str):
+def load_json_file(file_path: str):
     """Load JSON data from a given file path."""
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -207,6 +200,21 @@ def load_json(file_path: str):
     except json.JSONDecodeError as e:
         logger.error(f"Error decoding JSON: {e}")
         raise
+
+def read_keywords_from_file(filepath: str) -> list:
+    """
+    Reads keywords from a file, where each line is a keyword or phrase.
+    Returns a list of keywords or an empty list if any error occurs.
+    """
+    try:
+        with open(filepath, 'r', encoding='utf-8') as file:
+            return [line.strip() for line in file if line.strip()]
+    except FileNotFoundError:
+        logger.error(f"The file '{filepath}' was not found.")
+    except IOError:
+        logger.error(f"Could not read the file '{filepath}'.")
+    return []
+
 
 # Main execution
 if __name__ == "__main__":
@@ -222,5 +230,10 @@ if __name__ == "__main__":
     # Phase 2: Scrape job details
     asyncio.run(scrape_khamsat_jobs(fetched_cookies))
 
-    # Phase 3: Run the search and send to telegram process
-    search_and_send(JOB_DATA_JSON, OUTPUT_FILE, KEYWORDS_LIST, API_ID, API_HASH, PHONE_NUMBER, RECEIVER_USER_ID)
+    # Load keywords from the file
+    KEYWORDS_LIST = read_keywords_from_file(KW_FILE)
+    if not KEYWORDS_LIST:
+        logger.error("No keywords found or an error occurred while reading the file.")
+    else:
+        # Phase 3: Run the search and send to telegram process
+        search_and_send(JOB_DATA_JSON, OUTPUT_FILE, KEYWORDS_LIST, API_ID, API_HASH, PHONE_NUMBER, RECEIVER_USER_ID)
