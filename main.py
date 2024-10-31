@@ -6,16 +6,29 @@ from _logger import logger
 import json
 import random
 import httpx
-from search_and_send import search_and_send
+from search_and_send import search_and_send as send
 from config import BROWSER_PATH, API_HASH, API_ID, PHONE_NUMBER, RECEIVER_USER_ID
 
 
-# Files path
+# Directories paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_JSON = os.path.join(SCRIPT_DIR, 'khamsat_job_links.json')
-JOB_DATA_JSON = os.path.join(SCRIPT_DIR, 'khamsat_jobs_data.json')
-OUTPUT_FILE = os.path.join(SCRIPT_DIR, 'searched.json')
-KW_FILE = os.path.join(SCRIPT_DIR, 'keywords_list.txt')
+JSON_DIR = os.path.join(SCRIPT_DIR, "Json_files")
+
+# Files paths
+jobs_urls_file = os.path.join(JSON_DIR, 'jobs_urls.json')
+jobs_data_file = os.path.join(JSON_DIR, 'jobs_data.json')
+matched_jobs_file = os.path.join(JSON_DIR, 'matched_jobs.json')
+keywords_file = os.path.join(SCRIPT_DIR, 'keywords_list.txt')
+
+
+# Function to check if a directory exist, else create one.
+def check_for_dir(dir_path:str):
+    try:
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+            logger.info(f"{dir_path} directory created!")
+    except Exception as e:
+        logger.error(f"Could't find or create directory {dir_path} : {e}")
 
 # Semaphore limit for async requests
 SEM_LIMIT = 5
@@ -23,9 +36,9 @@ semaphore = asyncio.Semaphore(SEM_LIMIT)
 
 # --- Phase 1: Job Links Scraper ---
 class KhamsatScraper:
-    def __init__(self, base_url, load_more_times=int, delay=int):
+    def __init__(self, base_url, pages_to_search=int, delay=int):
         self.base_url = base_url
-        self.load_more_times = load_more_times
+        self.pages_to_search = pages_to_search
         self.delay = delay
         self.browser = None
         self.page = None
@@ -48,7 +61,7 @@ class KhamsatScraper:
 
     async def load_more_posts(self):
         """Click the 'Load More' button multiple times to load additional posts."""
-        for i in range(self.load_more_times):
+        for i in range(self.pages_to_search):
             try:
                 logger.info(f"Loading {i+1} more page/s")
                 # Load more button XPath
@@ -93,14 +106,30 @@ class KhamsatScraper:
         await self.close_browser()
         return job_links
 
-def save_job_links_to_json(job_links, file_path):
+def save_to_json(data, dir_path:str, file_path:str):
     """Save job links to a JSON file."""
+    check_for_dir(dir_path)
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(job_links, f, indent=4, ensure_ascii=False)
-        logger.info(f"Job links saved to {file_path}")
+            json.dump(data, f, indent=4, ensure_ascii=False)
+        logger.info(f"Data saved to {file_path}")
     except Exception as e:
-        logger.error(f"Failed to save job links: {e}")
+        logger.error(f"Failed to save data to {file_path} : {e}")
+
+def load_json_file(dir_path:str, file_path: str):
+    """Load JSON data from a given file path."""
+    check_for_dir(dir_path)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        logger.info(f"Successfully loaded JSON file from {file_path}")
+        return data
+    except FileNotFoundError:
+        logger.error(f"File not found: {file_path}")
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON: {e}")
+        raise
 
 # --- Phase 2: Job Data Scraper ---
 async def fetch_page_content(url:str, COOKIES:dict):
@@ -172,7 +201,7 @@ async def scrape_khamsat_job(url: str, COOKIES):
 async def scrape_khamsat_jobs(COOKIES):
     """Scrape job data from multiple pages and save it as JSON."""
     tasks = []
-    jobs_url = load_json_file(OUTPUT_JSON)
+    jobs_url = load_json_file(JSON_DIR, jobs_urls_file)
     for url in jobs_url:
         tasks.append(scrape_khamsat_job(url, COOKIES))
     
@@ -182,24 +211,11 @@ async def scrape_khamsat_jobs(COOKIES):
     valid_results = [res for res in results if res]
     
     # Save results as JSON
-    with open(JOB_DATA_JSON, 'w', encoding='utf-8') as f:
-        json.dump(valid_results, f, ensure_ascii=False, indent=4)
+    save_to_json(valid_results, JSON_DIR, jobs_data_file)  
     
-    logger.info(f"Scraped {len(valid_results)} jobs and saved to {JOB_DATA_JSON}")
+    logger.info(f"Scraped {len(valid_results)} jobs and saved to {jobs_data_file}")
 
-def load_json_file(file_path: str):
-    """Load JSON data from a given file path."""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        logger.info(f"Successfully loaded JSON file from {file_path}")
-        return data
-    except FileNotFoundError:
-        logger.error(f"File not found: {file_path}")
-        raise
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decoding JSON: {e}")
-        raise
+
 
 def read_keywords_from_file(filepath: str) -> list:
     """
@@ -219,22 +235,31 @@ def read_keywords_from_file(filepath: str) -> list:
 # Main execution
 if __name__ == "__main__":
     BASE_URL = 'https://khamsat.com/community/requests'
-    
+
+    # Prompt the user to input the number of pages to load, ensuring a valid integer >= 1
+    while True:
+        try:
+            pages_to_search = int(input("Enter the number of pages to search within (must be 1 or higher): "))
+            if pages_to_search < 1:
+                raise ValueError("The number must be at least 1.")
+            break  # Exit loop if valid input is given
+        except ValueError as e:
+            logger.error(f"Invalid input: {e}. Please enter a valid integer 1 or higher.")
+
     # Phase 1: Scrape job links
-    #Load_more_times refers to the number of pages you want to load (0 = one page) -- 25 job posts per page.
-    khamsat_scraper = KhamsatScraper(BASE_URL, load_more_times=1, delay=3) 
+    khamsat_scraper = KhamsatScraper(BASE_URL, pages_to_search=pages_to_search-1, delay=3) 
     job_links, cookies = asyncio.run(khamsat_scraper.run_scraper())
-    save_job_links_to_json(job_links, OUTPUT_JSON)
+    save_to_json(job_links, JSON_DIR, jobs_urls_file)
     fetched_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
     logger.info(f'Fetched cookies:\n{json.dumps(fetched_cookies, indent=2)}')
+    
     # Phase 2: Scrape job details
-    logger.info(f'Fetching data from job links...')
     asyncio.run(scrape_khamsat_jobs(fetched_cookies))
 
     # Load keywords from the file
-    KEYWORDS_LIST = read_keywords_from_file(KW_FILE)
+    KEYWORDS_LIST = read_keywords_from_file(keywords_file)
     if not KEYWORDS_LIST:
         logger.error("No keywords found or an error occurred while reading the file.")
     else:
         # Phase 3: Run the search and send to telegram process
-        search_and_send(JOB_DATA_JSON, OUTPUT_FILE, KEYWORDS_LIST, API_ID, API_HASH, PHONE_NUMBER, RECEIVER_USER_ID)
+        send(jobs_data_file, matched_jobs_file, KEYWORDS_LIST, API_ID, API_HASH, PHONE_NUMBER, RECEIVER_USER_ID)
